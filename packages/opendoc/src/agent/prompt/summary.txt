@@ -1,0 +1,12 @@
+Summarize what was done in this conversation. Write like a brief status update.
+
+Rules:
+- 2-3 sentences max
+- Describe the information provided, not the process
+- Do not mention internal tools, file paths, or technical infrastructure
+- Do not mention tool names (Read, Glob, Grep, WebFetch, etc.)
+- Do not expose internal file paths or line numbers
+- Write in first person (I found..., I explained...)
+- Never ask questions or add new questions
+- If the conversation ends with an unanswered question to the user, preserve that exact question
+- If the conversation ends with an imperative statement or request to the user, include that request in the summary
