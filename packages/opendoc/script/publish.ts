@@ -38,18 +38,40 @@ await Bun.file(`./dist/${pkg.name}/package.json`).write(
 
 const tags = [Script.channel]
 
+// Set npm auth token from environment
+const npmToken = process.env.NPM_TOKEN
+if (!npmToken) {
+  console.error("Error: NPM_TOKEN environment variable is required")
+  process.exit(1)
+}
+
+// Write .npmrc to each dist directory to avoid workspace issues
+const npmrcContent = `//registry.npmjs.org/:_authToken=${npmToken}\n`
+
 const tasks = Object.entries(binaries).map(async ([name]) => {
   if (process.platform !== "win32") {
     await $`chmod -R 755 .`.cwd(`./dist/${name}`)
   }
+  await Bun.file(`./dist/${name}/.npmrc`).write(npmrcContent)
   await $`bun pm pack`.cwd(`./dist/${name}`)
   for (const tag of tags) {
-    await $`npm publish *.tgz --access public --tag ${tag}`.cwd(`./dist/${name}`)
+    try {
+      await $`npm publish *.tgz --access public --tag ${tag}`.cwd(`./dist/${name}`)
+    } catch (e) {
+      console.error(`Failed to publish ${name} with tag ${tag}:`, e instanceof Error ? e.message : e)
+    }
   }
 })
 await Promise.all(tasks)
+
+// Write .npmrc to main package directory
+await Bun.file(`./dist/${pkg.name}/.npmrc`).write(npmrcContent)
 for (const tag of tags) {
-  await $`cd ./dist/${pkg.name} && bun pm pack && npm publish *.tgz --access public --tag ${tag}`
+  try {
+    await $`cd ./dist/${pkg.name} && bun pm pack && npm publish *.tgz --access public --tag ${tag}`
+  } catch (e) {
+    console.error(`Failed to publish ${pkg.name} with tag ${tag}:`, e instanceof Error ? e.message : e)
+  }
 }
 
 if (!Script.preview) {
@@ -61,10 +83,4 @@ if (!Script.preview) {
       await $`zip -r ../../${key}.zip *`.cwd(`dist/${key}/bin`)
     }
   }
-
-  const image = "ghcr.io/anomalyco/opendoc"
-  const platforms = "linux/amd64,linux/arm64"
-  const tags = [`${image}:${Script.version}`, `${image}:latest`]
-  const tagFlags = tags.flatMap((t) => ["-t", t])
-  await $`docker buildx build --platform ${platforms} ${tagFlags} --push .`
 }
