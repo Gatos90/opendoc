@@ -19,7 +19,63 @@ import type { Provider } from "@/provider/provider"
 import { Flag } from "@/flag/flag"
 
 export namespace SystemPrompt {
-  export function header(providerID: string) {
+  export type PromptOverrides = {
+    provider?: string
+    header?: string
+    prepend?: string
+    append?: string
+    agents?: Record<string, string>
+  }
+
+  export function listPrompts() {
+    return {
+      provider: {
+        anthropic: {
+          content: PROMPT_ANTHROPIC,
+          models: ["claude"],
+          description: "Main prompt for Anthropic Claude models",
+        },
+        openai: {
+          content: PROMPT_BEAST,
+          models: ["gpt-", "o1", "o3"],
+          description: "Prompt for OpenAI GPT and reasoning models",
+        },
+        codex: {
+          content: PROMPT_CODEX,
+          models: ["gpt-5"],
+          description: "Prompt for OpenAI Codex/GPT-5 models",
+        },
+        gemini: {
+          content: PROMPT_GEMINI,
+          models: ["gemini-"],
+          description: "Prompt for Google Gemini models",
+        },
+        default: {
+          content: PROMPT_ANTHROPIC_WITHOUT_TODO,
+          models: ["*"],
+          description: "Fallback prompt for other models",
+        },
+      },
+      header: {
+        anthropic: {
+          content: PROMPT_ANTHROPIC_SPOOF.trim(),
+          providers: ["anthropic"],
+          description: "Header prepended for Anthropic providers",
+        },
+      },
+      instructions: {
+        codex: {
+          content: PROMPT_CODEX_INSTRUCTIONS.trim(),
+          description: "Instructions for Codex models",
+        },
+      },
+    }
+  }
+
+  export function header(providerID: string, overrides?: { header?: string }) {
+    // Check override first
+    if (overrides?.header) return [overrides.header.trim()]
+    // Fall back to static defaults
     if (providerID.includes("anthropic")) return [PROMPT_ANTHROPIC_SPOOF.trim()]
     return []
   }
@@ -28,7 +84,10 @@ export namespace SystemPrompt {
     return PROMPT_CODEX_INSTRUCTIONS.trim()
   }
 
-  export function provider(model: Provider.Model) {
+  export function provider(model: Provider.Model, overrides?: { provider?: string }) {
+    // Check override first
+    if (overrides?.provider) return [overrides.provider]
+    // Fall back to static defaults
     if (model.api.id.includes("gpt-5")) return [PROMPT_CODEX]
     if (model.api.id.includes("gpt-") || model.api.id.includes("o1") || model.api.id.includes("o3"))
       return [PROMPT_BEAST]

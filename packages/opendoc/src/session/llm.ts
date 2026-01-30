@@ -41,6 +41,13 @@ export namespace LLM {
     small?: boolean
     tools: Record<string, Tool>
     retries?: number
+    promptOverrides?: {
+      provider?: string
+      header?: string
+      prepend?: string
+      append?: string
+      agents?: Record<string, string>
+    }
   }
 
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
@@ -65,16 +72,24 @@ export namespace LLM {
     ])
     const isCodex = provider.id === "openai" && auth?.type === "oauth"
 
-    const system = SystemPrompt.header(input.model.providerID)
+    const system = SystemPrompt.header(input.model.providerID, input.promptOverrides)
     system.push(
       [
-        // use agent prompt otherwise provider prompt
+        // prepend prompt from overrides
+        ...(input.promptOverrides?.prepend ? [input.promptOverrides.prepend] : []),
+        // use agent prompt (with possible agent-specific override), otherwise provider prompt
         // For Codex sessions, skip SystemPrompt.provider() since it's sent via options.instructions
-        ...(input.agent.prompt ? [input.agent.prompt] : isCodex ? [] : SystemPrompt.provider(input.model)),
+        ...(input.agent.prompt
+          ? [input.promptOverrides?.agents?.[input.agent.name] ?? input.agent.prompt]
+          : isCodex
+            ? []
+            : SystemPrompt.provider(input.model, input.promptOverrides)),
         // any custom prompt passed into this call
         ...input.system,
         // any custom prompt from last user message
         ...(input.user.system ? [input.user.system] : []),
+        // append prompt from overrides
+        ...(input.promptOverrides?.append ? [input.promptOverrides.append] : []),
       ]
         .filter((x) => x)
         .join("\n"),

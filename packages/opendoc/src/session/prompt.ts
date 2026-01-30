@@ -52,6 +52,23 @@ export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
   export const OUTPUT_TOKEN_MAX = Flag.OPENDOC_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000
 
+  export function listSessionPrompts() {
+    return {
+      plan: {
+        content: PROMPT_PLAN,
+        description: "Prompt appended when in plan mode",
+      },
+      buildSwitch: {
+        content: BUILD_SWITCH,
+        description: "Prompt appended when switching from plan to build mode",
+      },
+      maxSteps: {
+        content: MAX_STEPS,
+        description: "Prompt appended when maximum steps is reached",
+      },
+    }
+  }
+
   const state = Instance.state(
     () => {
       const data: Record<
@@ -103,6 +120,14 @@ export namespace SessionPrompt {
     ),
     system: z.string().optional(),
     variant: z.string().optional(),
+    prompts: z
+      .object({
+        provider: z.string().optional(),
+        prepend: z.string().optional(),
+        append: z.string().optional(),
+      })
+      .optional()
+      .describe("Message-level prompt overrides. Falls back to session-level, then static defaults."),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -624,6 +649,17 @@ export namespace SessionPrompt {
 
       await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
 
+      // Build prompt overrides with fallback chain: message-level → session-level
+      const promptOverrides: LLM.StreamInput["promptOverrides"] = {
+        provider: lastUser.prompts?.provider ?? session.prompts?.provider,
+        header: session.prompts?.header,
+        prepend: lastUser.prompts?.prepend,
+        append: lastUser.prompts?.append,
+        agents: session.prompts?.agents,
+      }
+      // Only include if any override is set
+      const hasOverrides = Object.values(promptOverrides).some((v) => v !== undefined)
+
       const result = await processor.process({
         user: lastUser,
         agent,
@@ -643,6 +679,7 @@ export namespace SessionPrompt {
         ],
         tools,
         model,
+        ...(hasOverrides ? { promptOverrides } : {}),
       })
       if (result === "stop") break
       if (result === "compact") {
@@ -866,6 +903,7 @@ export namespace SessionPrompt {
       model: input.model ?? agent.model ?? (await lastModel(input.sessionID)),
       system: input.system,
       variant: input.variant,
+      prompts: input.prompts,
     }
 
     const parts = await Promise.all(

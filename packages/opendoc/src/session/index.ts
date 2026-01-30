@@ -39,6 +39,17 @@ export namespace Session {
     ).test(title)
   }
 
+  export const Prompts = z
+    .object({
+      provider: z.string().optional(),
+      header: z.string().optional(),
+      agents: z.record(z.string(), z.string()).optional(),
+    })
+    .meta({
+      ref: "SessionPrompts",
+    })
+  export type Prompts = z.output<typeof Prompts>
+
   export const Info = z
     .object({
       id: Identifier.schema("session"),
@@ -68,6 +79,7 @@ export namespace Session {
         archived: z.number().optional(),
       }),
       permission: PermissionNext.Ruleset.optional(),
+      prompts: Prompts.optional(),
       revert: z
         .object({
           messageID: z.string(),
@@ -133,6 +145,7 @@ export namespace Session {
         parentID: Identifier.schema("session").optional(),
         title: z.string().optional(),
         permission: Info.shape.permission,
+        prompts: Prompts.optional(),
       })
       .optional(),
     async (input) => {
@@ -141,6 +154,7 @@ export namespace Session {
         directory: Instance.directory,
         title: input?.title,
         permission: input?.permission,
+        prompts: input?.prompts,
       })
     },
   )
@@ -195,6 +209,7 @@ export namespace Session {
     parentID?: string
     directory: string
     permission?: PermissionNext.Ruleset
+    prompts?: Prompts
   }) {
     const result: Info = {
       id: Identifier.descending("session", input.id),
@@ -205,6 +220,7 @@ export namespace Session {
       parentID: input.parentID,
       title: input.title ?? createDefaultTitle(!!input.parentID),
       permission: input.permission,
+      prompts: input.prompts,
       time: {
         created: Date.now(),
         updated: Date.now(),
@@ -271,6 +287,18 @@ export namespace Session {
       draft.share = undefined
     })
   })
+
+  export const updatePrompts = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      prompts: Prompts,
+    }),
+    async (input) => {
+      return update(input.sessionID, (draft) => {
+        draft.prompts = input.prompts
+      })
+    },
+  )
 
   export async function update(id: string, editor: (session: Info) => void) {
     const project = Instance.project

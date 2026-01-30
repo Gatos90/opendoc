@@ -259,6 +259,27 @@ export namespace Agent {
     return state().then((x) => Object.keys(x)[0])
   }
 
+  export function listAgentPrompts() {
+    return {
+      explore: {
+        content: PROMPT_EXPLORE,
+        description: "Specialized prompt for fast codebase exploration",
+      },
+      compaction: {
+        content: PROMPT_COMPACTION,
+        description: "Prompt for summarizing/compacting conversation history",
+      },
+      summary: {
+        content: PROMPT_SUMMARY,
+        description: "Prompt for generating PR-style summaries",
+      },
+      title: {
+        content: PROMPT_TITLE,
+        description: "Prompt for generating brief conversation titles",
+      },
+    }
+  }
+
   export async function generate(input: { description: string; model?: { providerID: string; modelID: string } }) {
     const cfg = await Config.get()
     const defaultModel = input.model ?? (await Provider.defaultModel())

@@ -315,6 +315,13 @@ export namespace MessageV2 {
     system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     variant: z.string().optional(),
+    prompts: z
+      .object({
+        provider: z.string().optional(),
+        prepend: z.string().optional(),
+        append: z.string().optional(),
+      })
+      .optional(),
   }).meta({
     ref: "UserMessage",
   })

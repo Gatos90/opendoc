@@ -33,6 +33,7 @@ import { ProjectRoute } from "./project"
 import { ToolRegistry } from "../tool/registry"
 import { zodToJsonSchema } from "zod-to-json-schema"
 import { SessionPrompt } from "../session/prompt"
+import { SystemPrompt } from "../session/system"
 import { SessionCompaction } from "../session/compaction"
 import { SessionRevert } from "../session/revert"
 import { lazy } from "../util/lazy"
@@ -71,6 +72,37 @@ export namespace Server {
     Connected: BusEvent.define("server.connected", z.object({})),
     Disposed: BusEvent.define("global.disposed", z.object({})),
   }
+
+  const PromptInfo = z
+    .object({
+      content: z.string(),
+      models: z.array(z.string()).optional(),
+      providers: z.array(z.string()).optional(),
+      description: z.string(),
+    })
+    .meta({ ref: "PromptInfo" })
+
+  const PromptListResponse = z
+    .object({
+      provider: z.record(z.string(), PromptInfo),
+      header: z.record(z.string(), PromptInfo),
+      instructions: z.record(z.string(), PromptInfo),
+      agents: z.record(z.string(), PromptInfo),
+      session: z.record(z.string(), PromptInfo),
+      override: z.object({
+        session: z.object({
+          description: z.string(),
+          schema: z.record(z.string(), z.string()),
+          example: z.record(z.string(), z.any()),
+        }),
+        message: z.object({
+          description: z.string(),
+          schema: z.record(z.string(), z.string()),
+          example: z.record(z.string(), z.any()),
+        }),
+      }),
+    })
+    .meta({ ref: "PromptListResponse" })
 
   const app = new Hono()
   export const App: () => Hono = lazy(
@@ -515,6 +547,65 @@ export namespace Server {
             const config = c.req.valid("json")
             await Config.update(config)
             return c.json(config)
+          },
+        )
+        .get(
+          "/prompt",
+          describeRoute({
+            summary: "List all available prompts",
+            description:
+              "Returns all system prompts with their content, model mappings, and override documentation",
+            operationId: "prompt.list",
+            responses: {
+              200: {
+                description: "Prompt listing",
+                content: {
+                  "application/json": {
+                    schema: resolver(PromptListResponse),
+                  },
+                },
+              },
+            },
+          }),
+          async (c) => {
+            const systemPrompts = SystemPrompt.listPrompts()
+            const agentPrompts = Agent.listAgentPrompts()
+            const sessionPrompts = SessionPrompt.listSessionPrompts()
+
+            return c.json({
+              provider: systemPrompts.provider,
+              header: systemPrompts.header,
+              instructions: systemPrompts.instructions,
+              agents: agentPrompts,
+              session: sessionPrompts,
+              override: {
+                session: {
+                  description: "Prompts set at session creation, persist for session lifetime",
+                  schema: {
+                    provider: "string - Override the provider prompt",
+                    header: "string - Override the header prompt",
+                    agents: "Record<string, string> - Per-agent prompt overrides",
+                  },
+                  example: {
+                    provider: "You are a helpful coding assistant...",
+                    header: "System: OpenDoc AI",
+                    agents: { explore: "Custom explore prompt..." },
+                  },
+                },
+                message: {
+                  description: "Prompts set per-message, override session prompts for that message only",
+                  schema: {
+                    provider: "string - Override provider prompt for this message",
+                    prepend: "string - Add content before the main prompt",
+                    append: "string - Add content after the main prompt",
+                  },
+                  example: {
+                    prepend: "Focus on security considerations.",
+                    append: "Always explain your reasoning.",
+                  },
+                },
+              },
+            })
           },
         )
         .get(
