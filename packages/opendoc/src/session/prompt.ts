@@ -128,6 +128,31 @@ export namespace SessionPrompt {
       })
       .optional()
       .describe("Message-level prompt overrides. Falls back to session-level, then static defaults."),
+    customTools: z
+      .array(
+        z.object({
+          name: z.string().describe("Unique tool name (used as tool ID)"),
+          description: z.string().describe("What the tool does - shown to the AI"),
+          parameters: z.record(z.string(), z.any()).describe("JSON Schema for tool arguments"),
+          code: z.string().describe("JavaScript async function body. Receives (args, context). Should return a string."),
+        }),
+      )
+      .optional()
+      .describe("Custom tool definitions to make available for this message. Each tool has a name, description, JSON Schema parameters, and JavaScript code."),
+    mcpServers: z
+      .array(
+        z.object({
+          name: z.string().describe("Unique server name (used as MCP client ID)"),
+          type: z.enum(["local", "remote"]).describe("Server type: local (stdio) or remote (HTTP/SSE)"),
+          command: z.string().array().optional().describe("Command and arguments for local servers (e.g. ['npx', '-y', 'server-name'])"),
+          environment: z.record(z.string(), z.string()).optional().describe("Environment variables for local servers"),
+          url: z.string().optional().describe("URL for remote MCP servers"),
+          headers: z.record(z.string(), z.string()).optional().describe("HTTP headers for remote servers"),
+          timeout: z.number().int().positive().optional().describe("Request timeout in ms"),
+        }),
+      )
+      .optional()
+      .describe("MCP server configurations to connect and make tools available for this message."),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -615,6 +640,8 @@ export namespace SessionPrompt {
         session,
         model,
         tools: lastUser.tools,
+        customTools: lastUser.customTools,
+        mcpServers: lastUser.mcpServers,
         processor,
         bypassAgentCheck,
       })
@@ -716,6 +743,8 @@ export namespace SessionPrompt {
     model: Provider.Model
     session: Session.Info
     tools?: Record<string, boolean>
+    customTools?: MessageV2.User["customTools"]
+    mcpServers?: MessageV2.User["mcpServers"]
     processor: SessionProcessor.Info
     bypassAgentCheck: boolean
   }) {
@@ -796,7 +825,22 @@ export namespace SessionPrompt {
       })
     }
 
-    for (const [key, item] of Object.entries(await MCP.tools())) {
+    // If per-message MCP servers are specified, ensure they're connected and only use their tools
+    if (input.mcpServers?.length) {
+      for (const server of input.mcpServers) {
+        const mcpConfig = server.type === "local"
+          ? { type: "local" as const, command: server.command ?? [], environment: server.environment }
+          : { type: "remote" as const, url: server.url ?? "", headers: server.headers }
+        await MCP.add(server.name, { ...mcpConfig, timeout: server.timeout })
+      }
+    }
+
+    const mcpServerNames = input.mcpServers?.map(s => s.name)
+    const mcpTools = mcpServerNames?.length
+      ? await MCP.toolsForServers(mcpServerNames)
+      : await MCP.tools()
+
+    for (const [key, item] of Object.entries(mcpTools)) {
       const execute = item.execute
       if (!execute) continue
 
@@ -886,6 +930,76 @@ export namespace SessionPrompt {
       tools[key] = item
     }
 
+    // Add custom tools from the message (passed via API per-message)
+    if (input.customTools?.length) {
+      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+      for (const ct of input.customTools) {
+        if (tools[ct.name]) {
+          log.warn("custom tool name conflicts with built-in tool, skipping", { name: ct.name })
+          continue
+        }
+        const schema = ProviderTransform.schema(input.model, ct.parameters)
+        tools[ct.name] = tool({
+          id: ct.name as any,
+          description: ct.description,
+          inputSchema: jsonSchema(schema as any),
+          async execute(args, options) {
+            const ctx = context(args, options)
+            await Plugin.trigger(
+              "tool.execute.before",
+              {
+                tool: ct.name,
+                sessionID: ctx.sessionID,
+                callID: ctx.callID,
+              },
+              { args },
+            )
+            let result: { title: string; output: string; metadata: Record<string, any> }
+            try {
+              const fn = new AsyncFunction("args", "context", ct.code)
+              const output = await fn(args, {
+                sessionID: ctx.sessionID,
+                messageID: ctx.messageID,
+                agent: ctx.agent,
+                directory: Instance.directory,
+                worktree: Instance.worktree,
+              })
+              result = {
+                title: ct.name,
+                output: typeof output === "string" ? output : JSON.stringify(output),
+                metadata: { custom: true },
+              }
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error)
+              log.error("custom tool execution failed", { name: ct.name, error: message })
+              result = {
+                title: ct.name,
+                output: `Error executing custom tool "${ct.name}": ${message}`,
+                metadata: { custom: true, error: true },
+              }
+            }
+            await Plugin.trigger(
+              "tool.execute.after",
+              {
+                tool: ct.name,
+                sessionID: ctx.sessionID,
+                callID: ctx.callID,
+              },
+              result,
+            )
+            return result
+          },
+          toModelOutput(result) {
+            return {
+              type: "text",
+              value: result.output,
+            }
+          },
+        })
+        log.info("registered custom tool", { name: ct.name })
+      }
+    }
+
     return tools
   }
 
@@ -899,6 +1013,8 @@ export namespace SessionPrompt {
         created: Date.now(),
       },
       tools: input.tools,
+      customTools: input.customTools,
+      mcpServers: input.mcpServers,
       agent: agent.name,
       model: input.model ?? agent.model ?? (await lastModel(input.sessionID)),
       system: input.system,

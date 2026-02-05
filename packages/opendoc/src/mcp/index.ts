@@ -576,6 +576,42 @@ export namespace MCP {
     return result
   }
 
+  export async function toolsForServers(serverNames: string[]) {
+    const nameSet = new Set(serverNames)
+    const result: Record<string, Tool> = {}
+    const s = await state()
+    const cfg = await Config.get()
+    const config = cfg.mcp ?? {}
+    const clientsSnapshot = await clients()
+    const defaultTimeout = cfg.experimental?.mcp_timeout
+
+    for (const [clientName, client] of Object.entries(clientsSnapshot)) {
+      if (!nameSet.has(clientName)) continue
+      if (s.status[clientName]?.status !== "connected") continue
+
+      const toolsResult = await client.listTools().catch((e) => {
+        log.error("failed to get tools", { clientName, error: e.message })
+        s.status[clientName] = {
+          status: "failed" as const,
+          error: e instanceof Error ? e.message : String(e),
+        }
+        delete s.clients[clientName]
+        return undefined
+      })
+      if (!toolsResult) continue
+
+      const mcpConfig = config[clientName]
+      const entry = isMcpConfigured(mcpConfig) ? mcpConfig : undefined
+      const timeout = entry?.timeout ?? defaultTimeout
+      for (const mcpTool of toolsResult.tools) {
+        const sanitizedClientName = clientName.replace(/[^a-zA-Z0-9_-]/g, "_")
+        const sanitizedToolName = mcpTool.name.replace(/[^a-zA-Z0-9_-]/g, "_")
+        result[sanitizedClientName + "_" + sanitizedToolName] = await convertMcpTool(mcpTool, client, timeout)
+      }
+    }
+    return result
+  }
+
   export async function prompts() {
     const s = await state()
     const clientsSnapshot = await clients()

@@ -314,6 +314,29 @@ export namespace MessageV2 {
     }),
     system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
+    customTools: z
+      .array(
+        z.object({
+          name: z.string(),
+          description: z.string(),
+          parameters: z.record(z.string(), z.any()),
+          code: z.string(),
+        }),
+      )
+      .optional(),
+    mcpServers: z
+      .array(
+        z.object({
+          name: z.string(),
+          type: z.enum(["local", "remote"]),
+          command: z.string().array().optional(),
+          environment: z.record(z.string(), z.string()).optional(),
+          url: z.string().optional(),
+          headers: z.record(z.string(), z.string()).optional(),
+          timeout: z.number().int().positive().optional(),
+        }),
+      )
+      .optional(),
     variant: z.string().optional(),
     prompts: z
       .object({
