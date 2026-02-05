@@ -20,7 +20,7 @@ RUN curl -fsSL "https://github.com/BurntSushi/ripgrep/releases/download/${RIPGRE
 
 # Download opendoc from GitHub releases
 # Using arm64 version for ARM-based Docker builds
-ARG OPENDOC_VERSION=v1.0.5
+ARG OPENDOC_VERSION=v1.0.6
 ARG OPENDOC_ARCH=linux-arm64
 RUN curl -fsSL "https://github.com/Gatos90/opendoc/releases/download/${OPENDOC_VERSION}/opendoc-${OPENDOC_ARCH}.tar.gz" -o /tmp/opendoc.tar.gz \
     && tar -xzf /tmp/opendoc.tar.gz -C /tmp \
