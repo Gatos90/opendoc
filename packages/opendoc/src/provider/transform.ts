@@ -295,6 +295,12 @@ export namespace ProviderTransform {
   const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"]
   const OPENAI_EFFORTS = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
 
+  function isOpus46(model: Provider.Model): boolean {
+    const id = model.id.toLowerCase()
+    const apiId = model.api.id.toLowerCase()
+    return id.includes("opus-4-6") || id.includes("opus-4.6") || apiId.includes("opus-4-6") || apiId.includes("opus-4.6")
+  }
+
   export function variants(model: Provider.Model): Record<string, Record<string, any>> {
     if (!model.capabilities.reasoning) return {}
 
@@ -371,6 +377,20 @@ export namespace ProviderTransform {
 
       case "@ai-sdk/anthropic":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/anthropic
+        if (isOpus46(model)) {
+          // Opus 4.6 uses adaptive thinking with effort levels
+          return {
+            high: {
+              thinking: { type: "adaptive" },
+              effort: "high",
+            },
+            max: {
+              thinking: { type: "adaptive" },
+              effort: "max",
+            },
+          }
+        }
+        // Older models use enabled thinking with budgetTokens
         return {
           high: {
             thinking: {
@@ -617,6 +637,10 @@ export namespace ProviderTransform {
 
     if (npm === "@ai-sdk/anthropic") {
       const thinking = options?.["thinking"]
+      if (thinking?.["type"] === "adaptive") {
+        // Adaptive thinking manages its own budget — just return standard limit
+        return standardLimit
+      }
       const budgetTokens = typeof thinking?.["budgetTokens"] === "number" ? thinking["budgetTokens"] : 0
       const enabled = thinking?.["type"] === "enabled"
       if (enabled && budgetTokens > 0) {

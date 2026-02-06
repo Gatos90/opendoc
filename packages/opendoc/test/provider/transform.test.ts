@@ -195,6 +195,28 @@ describe("ProviderTransform.maxOutputTokens", () => {
       expect(result).toBe(OUTPUT_TOKEN_MAX)
     })
   })
+
+  describe("anthropic with adaptive thinking", () => {
+    test("returns standardLimit when thinking is adaptive", () => {
+      const modelLimit = 128000
+      const options = {
+        thinking: { type: "adaptive" },
+        effort: "high",
+      }
+      const result = ProviderTransform.maxOutputTokens("@ai-sdk/anthropic", options, modelLimit, OUTPUT_TOKEN_MAX)
+      expect(result).toBe(OUTPUT_TOKEN_MAX)
+    })
+
+    test("returns modelLimit when adaptive and modelLimit < globalLimit", () => {
+      const modelLimit = 16000
+      const options = {
+        thinking: { type: "adaptive" },
+        effort: "max",
+      }
+      const result = ProviderTransform.maxOutputTokens("@ai-sdk/anthropic", options, modelLimit, OUTPUT_TOKEN_MAX)
+      expect(result).toBe(16000)
+    })
+  })
 })
 
 describe("ProviderTransform.schema - gemini array items", () => {
@@ -1223,12 +1245,12 @@ describe("ProviderTransform.variants", () => {
   })
 
   describe("@ai-sdk/anthropic", () => {
-    test("returns high and max with thinking config", () => {
+    test("non-opus-4.6 models return high and max with enabled thinking", () => {
       const model = createMockModel({
-        id: "anthropic/claude-4",
+        id: "anthropic/claude-sonnet-4",
         providerID: "anthropic",
         api: {
-          id: "claude-4",
+          id: "claude-sonnet-4-20250514",
           url: "https://api.anthropic.com",
           npm: "@ai-sdk/anthropic",
         },
@@ -1246,6 +1268,46 @@ describe("ProviderTransform.variants", () => {
           type: "enabled",
           budgetTokens: 31999,
         },
+      })
+    })
+
+    test("opus-4-6 models return high and max with adaptive thinking", () => {
+      const model = createMockModel({
+        id: "anthropic/claude-opus-4-6",
+        providerID: "anthropic",
+        api: {
+          id: "claude-opus-4-6-20260101",
+          url: "https://api.anthropic.com",
+          npm: "@ai-sdk/anthropic",
+        },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["high", "max"])
+      expect(result.high).toEqual({
+        thinking: { type: "adaptive" },
+        effort: "high",
+      })
+      expect(result.max).toEqual({
+        thinking: { type: "adaptive" },
+        effort: "max",
+      })
+    })
+
+    test("opus-4.6 with dot notation also returns adaptive thinking", () => {
+      const model = createMockModel({
+        id: "anthropic/claude-opus-4.6",
+        providerID: "anthropic",
+        api: {
+          id: "claude-opus-4.6",
+          url: "https://api.anthropic.com",
+          npm: "@ai-sdk/anthropic",
+        },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["high", "max"])
+      expect(result.high).toEqual({
+        thinking: { type: "adaptive" },
+        effort: "high",
       })
     })
   })

@@ -43,6 +43,7 @@ export namespace Provider {
 
   const BUNDLED_PROVIDERS: Record<string, (options: any) => SDK> = {
     "@ai-sdk/amazon-bedrock": createAmazonBedrock,
+    // @ts-expect-error v3 returns LanguageModelV3 but runtime-compatible with V2
     "@ai-sdk/anthropic": createAnthropic,
     "@ai-sdk/azure": createAzure,
     "@ai-sdk/google": createGoogleGenerativeAI,
@@ -81,6 +82,27 @@ export namespace Provider {
           headers: {
             "anthropic-beta":
               "claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+          },
+        },
+      }
+    },
+    "azure-anthropic": async () => {
+      return {
+        autoload: false,
+        options: {
+          headers: {
+            "anthropic-beta":
+              "claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+          },
+          fetch: async (input: any, init?: any) => {
+            // Azure Foundry expects "api-key" header instead of "x-api-key"
+            const headers = new Headers(init?.headers)
+            const apiKey = headers.get("x-api-key")
+            if (apiKey) {
+              headers.delete("x-api-key")
+              headers.set("api-key", apiKey)
+            }
+            return fetch(input, { ...init, headers })
           },
         },
       }

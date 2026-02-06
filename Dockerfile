@@ -23,19 +23,18 @@ RUN case "${TARGETARCH}" in \
     && chmod +x /usr/local/bin/rg \
     && rm -rf /tmp/ripgrep*
 
-# Download opendoc from GitHub releases
+# Copy pre-built opendoc binary (built locally via bun run build)
 # Auto-detect architecture via TARGETARCH
-ARG OPENDOC_VERSION=v1.0.6
+ARG OPENDOC_VERSION=v1.0.7
+COPY packages/opendoc/dist/opendoc-linux-arm64/bin/opendoc /tmp/opendoc-arm64
+COPY packages/opendoc/dist/opendoc-linux-x64/bin/opendoc /tmp/opendoc-amd64
 RUN case "${TARGETARCH}" in \
-      arm64) OPENDOC_ARCH="linux-arm64" ;; \
-      amd64) OPENDOC_ARCH="linux-x64" ;; \
+      arm64) mv /tmp/opendoc-arm64 /usr/local/bin/opendoc ;; \
+      amd64) mv /tmp/opendoc-amd64 /usr/local/bin/opendoc ;; \
       *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac \
-    && curl -fsSL "https://github.com/Gatos90/opendoc/releases/download/${OPENDOC_VERSION}/opendoc-${OPENDOC_ARCH}.tar.gz" -o /tmp/opendoc.tar.gz \
-    && tar -xzf /tmp/opendoc.tar.gz -C /tmp \
-    && mv /tmp/opendoc /usr/local/bin/opendoc \
     && chmod +x /usr/local/bin/opendoc \
-    && rm -rf /tmp/opendoc*
+    && rm -f /tmp/opendoc-*
 
 # Create data directory for session persistence
 RUN mkdir -p /data/opendoc
