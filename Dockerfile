@@ -36,11 +36,37 @@ RUN case "${TARGETARCH}" in \
     && chmod +x /usr/local/bin/opendoc \
     && rm -f /tmp/opendoc-*
 
+# Optional: Install Chromium system deps + browser CLI for AI web browsing
+# --build-arg WITH_BROWSER=true    → agent-browser   (gatso/opendoc:<ver>-browser)
+# --build-arg WITH_PLAYWRIGHT=true → playwright-cli   (gatso/opendoc:<ver>-playwright)
+ARG WITH_BROWSER=false
+ARG WITH_PLAYWRIGHT=false
+RUN if [ "$WITH_BROWSER" = "true" ] || [ "$WITH_PLAYWRIGHT" = "true" ]; then \
+    apt-get update && apt-get install -y --no-install-recommends \
+      libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+      libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+      libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
+      libx11-xcb1 libxcb1 libxext6 libx11-6 fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*; \
+  fi
+
+RUN if [ "$WITH_BROWSER" = "true" ]; then \
+    npm install -g agent-browser@latest \
+    && agent-browser install \
+    && rm -rf /root/.npm /tmp/*; \
+  fi
+
 # Create data directory for session persistence
 RUN mkdir -p /data/opendoc
 
-# Create working directory for docs
+# Create working directory for docs (must be before playwright-cli install so config lands here)
 WORKDIR /docs
+
+RUN if [ "$WITH_PLAYWRIGHT" = "true" ]; then \
+    npm install -g @playwright/cli@latest \
+    && playwright-cli install \
+    && rm -rf /root/.npm /tmp/*; \
+  fi
 
 # Environment
 ENV OPENDOC_DATA_DIR=/data/opendoc
@@ -53,7 +79,7 @@ EXPOSE 4096
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:4096/health || exit 1
+    CMD curl -f http://localhost:4096/global/health || exit 1
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
