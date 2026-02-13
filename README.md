@@ -125,36 +125,40 @@ For running OpenAI models through Azure:
 
 See the [Azure Setup Guide](.opendoc/command/setup-azure.md) for detailed instructions.
 
+### Secure Environment Injection
+
+- `OPENDOC_ENV_SECRET` - 32-byte hex key (64 chars) for AES-256-GCM encryption of per-message environment variables. When set, the `environment` field in prompt requests must be encrypted. When unset, plain JSON objects are accepted (dev mode).
+
 ## Docker Image Variants
 
 OpenDoc provides three Docker image variants, all built for `linux/amd64` and `linux/arm64`:
 
 | Image | Tag | Size | Includes |
 |-------|-----|------|----------|
-| **Base** | `gatso/opendoc:1.0.7` | ~250 MB | OpenDoc server, ripgrep |
-| **Browser** | `gatso/opendoc:1.0.7-browser` | ~600 MB | + [agent-browser](https://github.com/vercel-labs/agent-browser), Chromium |
-| **Playwright** | `gatso/opendoc:1.0.7-playwright` | ~600 MB | + [playwright-cli](https://github.com/microsoft/playwright-cli), Chromium |
+| **Base** | `gatso/opendoc:1.0.9` | ~250 MB | OpenDoc server, ripgrep |
+| **Browser** | `gatso/opendoc:1.0.9-browser` | ~600 MB | + [agent-browser](https://github.com/vercel-labs/agent-browser), Chromium |
+| **Playwright** | `gatso/opendoc:1.0.9-playwright` | ~600 MB | + [playwright-cli](https://github.com/microsoft/playwright-cli), Chromium |
 
 ---
 
-### Base (`gatso/opendoc:1.0.7`)
+### Base (`gatso/opendoc:1.0.9`)
 
 The standard image with the OpenDoc server only. Lightweight and suitable for most deployments where the AI does not need to browse the web.
 
 ```bash
-docker pull gatso/opendoc:1.0.7
+docker pull gatso/opendoc:1.0.9
 ```
 
 **Use this when:** You only need document Q&A (file-based and URL-based sources) without live web browsing.
 
 ---
 
-### Browser (`gatso/opendoc:1.0.7-browser`)
+### Browser (`gatso/opendoc:1.0.9-browser`)
 
 Includes [agent-browser](https://github.com/vercel-labs/agent-browser) and a bundled Chromium installation. Agent-browser provides a persistent headless browser daemon that the AI can control via custom tools to navigate websites, take screenshots, click elements, and extract content.
 
 ```bash
-docker pull gatso/opendoc:1.0.7-browser
+docker pull gatso/opendoc:1.0.9-browser
 ```
 
 **Use this when:** You want full browser automation with persistent sessions, screenshots, and interactive page manipulation.
@@ -169,7 +173,7 @@ docker pull gatso/opendoc:1.0.7-browser
 
 ```yaml
 opendoc:
-  image: gatso/opendoc:1.0.7-browser
+  image: gatso/opendoc:1.0.9-browser
   shm_size: '512mb'  # Required for Chromium
   volumes:
     - opendoc_data:/data/opendoc
@@ -193,12 +197,12 @@ return result;
 
 ---
 
-### Playwright (`gatso/opendoc:1.0.7-playwright`)
+### Playwright (`gatso/opendoc:1.0.9-playwright`)
 
 Includes [playwright-cli](https://github.com/microsoft/playwright-cli) and a bundled Chromium installation. Playwright-cli is Microsoft's token-efficient CLI wrapper around Playwright, designed specifically for AI agents. It returns structured, compressed output optimized to minimize token usage.
 
 ```bash
-docker pull gatso/opendoc:1.0.7-playwright
+docker pull gatso/opendoc:1.0.9-playwright
 ```
 
 **Use this when:** You want token-efficient web browsing with structured output, ideal for AI agents that need to browse many pages without consuming excessive tokens.
@@ -214,7 +218,7 @@ docker pull gatso/opendoc:1.0.7-playwright
 
 ```yaml
 opendoc:
-  image: gatso/opendoc:1.0.7-playwright
+  image: gatso/opendoc:1.0.9-playwright
   shm_size: '512mb'  # Required for Chromium
   volumes:
     - opendoc_data:/data/opendoc
@@ -288,17 +292,17 @@ return result;
 ```bash
 # Base image
 docker buildx build --platform linux/amd64,linux/arm64 \
-  -t gatso/opendoc:1.0.7 --push .
+  -t gatso/opendoc:1.0.9 --push .
 
 # agent-browser image
 docker buildx build --platform linux/amd64,linux/arm64 \
   --build-arg WITH_BROWSER=true \
-  -t gatso/opendoc:1.0.7-browser --push .
+  -t gatso/opendoc:1.0.9-browser --push .
 
 # playwright-cli image
 docker buildx build --platform linux/amd64,linux/arm64 \
   --build-arg WITH_PLAYWRIGHT=true \
-  -t gatso/opendoc:1.0.7-playwright --push .
+  -t gatso/opendoc:1.0.9-playwright --push .
 ```
 
 ## License

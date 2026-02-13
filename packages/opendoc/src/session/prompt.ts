@@ -44,6 +44,7 @@ import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
+import { decryptEnv } from "@/util/env-crypto"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -153,6 +154,23 @@ export namespace SessionPrompt {
       )
       .optional()
       .describe("MCP server configurations to connect and make tools available for this message."),
+    skills: z
+      .array(
+        z.object({
+          name: z.string().describe("Unique skill name identifier"),
+          description: z.string().describe("What the skill provides - shown to the AI when listing available skills"),
+          content: z.string().describe("Markdown content of the skill, returned when the AI invokes it"),
+        }),
+      )
+      .optional()
+      .describe("Skill definitions to make available for this message. Merged with filesystem-based skills."),
+    environment: z
+      .union([
+        z.string().describe("Encrypted environment (AES-256-GCM, base64)"),
+        z.record(z.string(), z.string()).describe("Plain environment (dev mode, no OPENDOC_ENV_SECRET)"),
+      ])
+      .optional()
+      .describe("Environment variables for tool execution. Encrypted with OPENDOC_ENV_SECRET when set, or plain object in dev mode."),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -201,6 +219,17 @@ export namespace SessionPrompt {
   export type PromptInput = z.infer<typeof PromptInput>
 
   export const prompt = fn(PromptInput, async (input) => {
+    // Decrypt environment if it's an encrypted string
+    if (typeof input.environment === "string") {
+      const secret = process.env.OPENDOC_ENV_SECRET
+      if (!secret) {
+        log.warn("encrypted environment received but OPENDOC_ENV_SECRET is not set, ignoring")
+        input.environment = undefined
+      } else {
+        input.environment = decryptEnv(input.environment, secret)
+      }
+    }
+
     const session = await Session.get(input.sessionID)
     await SessionRevert.cleanup(session)
 
@@ -642,6 +671,8 @@ export namespace SessionPrompt {
         tools: lastUser.tools,
         customTools: lastUser.customTools,
         mcpServers: lastUser.mcpServers,
+        skills: lastUser.skills,
+        environment: lastUser.environment,
         processor,
         bypassAgentCheck,
       })
@@ -745,6 +776,8 @@ export namespace SessionPrompt {
     tools?: Record<string, boolean>
     customTools?: MessageV2.User["customTools"]
     mcpServers?: MessageV2.User["mcpServers"]
+    skills?: MessageV2.User["skills"]
+    environment?: MessageV2.User["environment"]
     processor: SessionProcessor.Info
     bypassAgentCheck: boolean
   }) {
@@ -785,7 +818,7 @@ export namespace SessionPrompt {
       },
     })
 
-    for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
+    for (const item of await ToolRegistry.tools(input.model.providerID, input.agent, { apiSkills: input.skills, environment: input.environment })) {
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
       tools[item.id] = tool({
         id: item.id as any,
@@ -1015,6 +1048,8 @@ export namespace SessionPrompt {
       tools: input.tools,
       customTools: input.customTools,
       mcpServers: input.mcpServers,
+      skills: input.skills,
+      environment: typeof input.environment === "object" ? input.environment : undefined,
       agent: agent.name,
       model: input.model ?? agent.model ?? (await lastModel(input.sessionID)),
       system: input.system,

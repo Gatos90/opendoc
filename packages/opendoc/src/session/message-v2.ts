@@ -337,6 +337,16 @@ export namespace MessageV2 {
         }),
       )
       .optional(),
+    skills: z
+      .array(
+        z.object({
+          name: z.string(),
+          description: z.string(),
+          content: z.string(),
+        }),
+      )
+      .optional(),
+    environment: z.record(z.string(), z.string()).optional(),
     variant: z.string().optional(),
     prompts: z
       .object({

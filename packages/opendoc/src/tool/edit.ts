@@ -50,10 +50,12 @@ export const EditTool = Tool.define("edit", {
       if (params.oldString === "") {
         contentNew = params.newString
         diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
+        const relPath = path.relative(Instance.worktree, filePath)
+        const dirGlob = path.dirname(relPath) + "/*"
         await ctx.ask({
           permission: "edit",
-          patterns: [path.relative(Instance.worktree, filePath)],
-          always: ["*"],
+          patterns: [relPath],
+          always: [dirGlob],
           metadata: {
             filepath: filePath,
             diff,
@@ -78,10 +80,12 @@ export const EditTool = Tool.define("edit", {
       diff = trimDiff(
         createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
       )
+      const relPath = path.relative(Instance.worktree, filePath)
+      const dirGlob = path.dirname(relPath) + "/*"
       await ctx.ask({
         permission: "edit",
-        patterns: [path.relative(Instance.worktree, filePath)],
-        always: ["*"],
+        patterns: [relPath],
+        always: [dirGlob],
         metadata: {
           filepath: filePath,
           diff,

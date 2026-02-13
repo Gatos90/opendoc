@@ -124,10 +124,12 @@ export const PatchTool = Tool.define("patch", {
     }
 
     // Check permissions if needed
+    const relPaths = fileChanges.map((c) => path.relative(Instance.worktree, c.filePath))
+    const dirGlobs = [...new Set(relPaths.map((p) => path.dirname(p) + "/*"))]
     await ctx.ask({
       permission: "edit",
-      patterns: fileChanges.map((c) => path.relative(Instance.worktree, c.filePath)),
-      always: ["*"],
+      patterns: relPaths,
+      always: dirGlobs,
       metadata: {
         diff: totalDiff,
       },

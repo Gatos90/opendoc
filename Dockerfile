@@ -23,9 +23,35 @@ RUN case "${TARGETARCH}" in \
     && chmod +x /usr/local/bin/rg \
     && rm -rf /tmp/ripgrep*
 
+# Install GitHub CLI (gh) — for creating PRs via AI
+ARG GH_VERSION=2.86.0
+RUN case "${TARGETARCH}" in \
+      arm64) GH_ARCH="linux_arm64" ;; \
+      amd64) GH_ARCH="linux_amd64" ;; \
+      *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_${GH_ARCH}.tar.gz" -o /tmp/gh.tar.gz \
+    && tar -xzf /tmp/gh.tar.gz -C /tmp --no-same-owner \
+    && mv /tmp/gh_${GH_VERSION}_${GH_ARCH}/bin/gh /usr/local/bin/gh \
+    && chmod +x /usr/local/bin/gh \
+    && rm -rf /tmp/gh*
+
+# Install GitLab CLI (glab) — for creating MRs via AI
+ARG GLAB_VERSION=1.84.0
+RUN case "${TARGETARCH}" in \
+      arm64) GLAB_ARCH="linux_arm64" ;; \
+      amd64) GLAB_ARCH="linux_amd64" ;; \
+      *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_${GLAB_ARCH}.tar.gz" -o /tmp/glab.tar.gz \
+    && tar -xzf /tmp/glab.tar.gz -C /tmp --no-same-owner \
+    && mv /tmp/bin/glab /usr/local/bin/glab \
+    && chmod +x /usr/local/bin/glab \
+    && rm -rf /tmp/glab* /tmp/bin
+
 # Copy pre-built opendoc binary (built locally via bun run build)
 # Auto-detect architecture via TARGETARCH
-ARG OPENDOC_VERSION=v1.0.7
+ARG OPENDOC_VERSION=v1.0.9
 COPY packages/opendoc/dist/opendoc-linux-arm64/bin/opendoc /tmp/opendoc-arm64
 COPY packages/opendoc/dist/opendoc-linux-x64/bin/opendoc /tmp/opendoc-amd64
 RUN case "${TARGETARCH}" in \

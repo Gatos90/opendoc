@@ -10,24 +10,34 @@ const parameters = z.object({
 })
 
 export const SkillTool = Tool.define("skill", async (ctx) => {
-  const skills = await Skill.all()
+  const filesystemSkills = await Skill.all()
+  const apiSkills = ctx?.apiSkills ?? []
+
+  // Build merged skill list: API skills override filesystem skills by name
+  const allSkills = new Map<string, { name: string; description: string; source: "filesystem" | "api"; location?: string; content?: string }>()
+  for (const s of filesystemSkills) {
+    allSkills.set(s.name, { name: s.name, description: s.description, source: "filesystem", location: s.location })
+  }
+  for (const s of apiSkills) {
+    allSkills.set(s.name, { name: s.name, description: s.description, source: "api", content: s.content })
+  }
 
   // Filter skills by agent permissions if agent provided
   const agent = ctx?.agent
   const accessibleSkills = agent
-    ? skills.filter((skill) => {
+    ? [...allSkills.values()].filter((skill) => {
         const rule = PermissionNext.evaluate("skill", skill.name, agent.permission)
         return rule.action !== "deny"
       })
-    : skills
+    : [...allSkills.values()]
 
   const description =
     accessibleSkills.length === 0
       ? "Load a skill to get detailed instructions for a specific task. No skills are currently available."
       : [
-          "Load a skill to get detailed instructions for a specific task.",
-          "Skills provide specialized knowledge and step-by-step guidance.",
-          "Use this when a task matches an available skill's description.",
+          "IMPORTANT: You MUST call this tool BEFORE responding whenever a user's request matches an available skill.",
+          "Skills provide specialized instructions for specific tasks.",
+          "Check the list below and invoke matching skills proactively — do not wait to be asked.",
           "<available_skills>",
           ...accessibleSkills.flatMap((skill) => [
             `  <skill>`,
@@ -42,10 +52,32 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, ctx) {
+      // Check API skills first
+      const apiSkill = apiSkills.find((s) => s.name === params.name)
+      if (apiSkill) {
+        await ctx.ask({
+          permission: "skill",
+          patterns: [params.name],
+          always: [params.name],
+          metadata: {},
+        })
+
+        const output = [`## Skill: ${apiSkill.name}`, "", apiSkill.content.trim()].join("\n")
+
+        return {
+          title: `Loaded skill: ${apiSkill.name}`,
+          output,
+          metadata: {
+            name: apiSkill.name,
+          },
+        }
+      }
+
+      // Fall back to filesystem skill
       const skill = await Skill.get(params.name)
 
       if (!skill) {
-        const available = await Skill.all().then((x) => Object.keys(x).join(", "))
+        const available = [...allSkills.keys()].join(", ")
         throw new Error(`Skill "${params.name}" not found. Available skills: ${available || "none"}`)
       }
 
@@ -67,7 +99,6 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
         output,
         metadata: {
           name: skill.name,
-          dir,
         },
       }
     },

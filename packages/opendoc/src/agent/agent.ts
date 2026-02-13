@@ -65,6 +65,24 @@ export namespace Agent {
         "*.env.*": "deny",
         "*.env.example": "allow",
       },
+      // Deny network/remote commands by default to prevent data exfiltration.
+      // Agents/roles can override these, e.g.: bash: { "curl": "allow" }
+      bash: {
+        "*": "allow",
+        "curl*": "deny",
+        "wget*": "deny",
+        "nc *": "deny",
+        "ncat*": "deny",
+        "netcat*": "deny",
+        "socat*": "deny",
+        "telnet*": "deny",
+        "ftp *": "deny",
+        "sftp*": "deny",
+        "scp *": "deny",
+        "rsync*": "deny",
+        "ssh *": "deny",
+        "nmap*": "deny",
+      },
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
 

@@ -33,7 +33,14 @@ export namespace Filesystem {
   }
 
   export function contains(parent: string, child: string) {
-    return !relative(parent, child).startsWith("..")
+    try {
+      const resolvedParent = realpathSync(parent)
+      const resolvedChild = realpathSync(child)
+      return !relative(resolvedParent, resolvedChild).startsWith("..")
+    } catch {
+      // If realpath fails (file doesn't exist yet), fall back to lexical check
+      return !relative(parent, child).startsWith("..")
+    }
   }
 
   export async function findUp(target: string, start: string, stop?: string) {

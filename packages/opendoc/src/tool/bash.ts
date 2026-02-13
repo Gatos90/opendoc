@@ -20,7 +20,103 @@ import { Truncate } from "./truncation"
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.OPENDOC_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
 
+// Safe environment variables to pass to spawned processes.
+// Strips API keys, tokens, and secrets from the child process environment.
+const ENV_ALLOWLIST = new Set([
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "TERM",
+  "TERM_PROGRAM",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "LC_MESSAGES",
+  "LC_COLLATE",
+  "EDITOR",
+  "VISUAL",
+  "PAGER",
+  "TZ",
+  "TMPDIR",
+  "TEMP",
+  "TMP",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_RUNTIME_DIR",
+  // Git
+  "GIT_AUTHOR_NAME",
+  "GIT_AUTHOR_EMAIL",
+  "GIT_COMMITTER_NAME",
+  "GIT_COMMITTER_EMAIL",
+  "GIT_SSH_COMMAND",
+  "GIT_EXEC_PATH",
+  "GIT_TEMPLATE_DIR",
+  // Node/Bun
+  "NODE_ENV",
+  "NODE_PATH",
+  "NODE_OPTIONS",
+  "BUN_INSTALL",
+  "NPM_CONFIG_PREFIX",
+  // Build tools
+  "CC",
+  "CXX",
+  "CFLAGS",
+  "LDFLAGS",
+  "PKG_CONFIG_PATH",
+  "GOPATH",
+  "GOROOT",
+  "CARGO_HOME",
+  "RUSTUP_HOME",
+  // Platform-specific
+  "DISPLAY",
+  "WAYLAND_DISPLAY",
+  "COLORTERM",
+  "HOSTNAME",
+  "PWD",
+  "OLDPWD",
+  "SHLVL",
+  "SYSTEMROOT",
+  "COMSPEC",
+  "WINDIR",
+  // macOS
+  "COMMAND_MODE",
+  "__CF_USER_TEXT_ENCODING",
+])
+
+function getSafeEnv(): Record<string, string> {
+  const safe: Record<string, string> = {}
+  for (const key of ENV_ALLOWLIST) {
+    if (process.env[key] !== undefined) {
+      safe[key] = process.env[key]!
+    }
+  }
+  return safe
+}
+
 export const log = Log.create({ service: "bash-tool" })
+
+// File reading commands that should be blocked when targeting .env files
+// (prevents bypassing the read tool's *.env deny rule via bash)
+const FILE_READ_COMMANDS = new Set([
+  "cat",
+  "head",
+  "tail",
+  "less",
+  "more",
+  "bat",
+  "tac",
+  "nl",
+  "od",
+  "xxd",
+  "hexdump",
+  "strings",
+  "source",
+])
+
+const ENV_FILE_PATTERN = /(?:^|\/|\\)\.env(?:\.[^/\\]*)?$/
 
 const resolveWasm = (asset: string) => {
   if (asset.startsWith("file://")) return fileURLToPath(asset)
@@ -51,9 +147,10 @@ const parser = lazy(async () => {
 })
 
 // TODO: we may wanna rename this tool so it works better on other shells
-export const BashTool = Tool.define("bash", async () => {
+export const BashTool = Tool.define("bash", async (ctx?: Tool.InitContext) => {
   const shell = Shell.acceptable()
   log.info("bash tool using shell", { shell })
+  const extraEnv = ctx?.environment ?? {}
 
   return {
     description: DESCRIPTION.replaceAll("${directory}", Instance.directory)
@@ -107,6 +204,18 @@ export const BashTool = Tool.define("bash", async () => {
           command.push(child.text)
         }
 
+        // Block reading .env files via shell commands (bypasses read tool's *.env deny rule)
+        if (command.length > 0 && FILE_READ_COMMANDS.has(command[0])) {
+          for (const arg of command.slice(1)) {
+            if (arg.startsWith("-")) continue
+            if (ENV_FILE_PATTERN.test(arg)) {
+              throw new Error(
+                `Reading .env files via "${command[0]}" is not allowed. Use the read tool instead (which enforces .env access controls).`,
+              )
+            }
+          }
+        }
+
         // not an exhaustive list, but covers most common cases
         if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0])) {
           for (const arg of command.slice(1)) {
@@ -157,9 +266,7 @@ export const BashTool = Tool.define("bash", async () => {
       const proc = spawn(params.command, {
         shell,
         cwd,
-        env: {
-          ...process.env,
-        },
+        env: { ...getSafeEnv(), ...extraEnv },
         stdio: ["ignore", "pipe", "pipe"],
         detached: process.platform !== "win32",
       })

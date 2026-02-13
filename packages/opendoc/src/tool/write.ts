@@ -31,10 +31,12 @@ export const WriteTool = Tool.define("write", {
     if (exists) await FileTime.assert(ctx.sessionID, filepath)
 
     const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, params.content))
+    const relPath = path.relative(Instance.worktree, filepath)
+    const dirGlob = path.dirname(relPath) + "/*"
     await ctx.ask({
       permission: "edit",
-      patterns: [path.relative(Instance.worktree, filepath)],
-      always: ["*"],
+      patterns: [relPath],
+      always: [dirGlob],
       metadata: {
         filepath,
         diff,
